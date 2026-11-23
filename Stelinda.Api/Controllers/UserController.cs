@@ -4,6 +4,7 @@ using Common.Enums;
 using Common.Exceptions;
 using Common.Extensions;
 using Stelinda.Api.Extensions;
+using Stelinda.Api.Media;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -298,8 +299,8 @@ public class UserController : ControllerBase
 
     /// <summary>
     /// Profil fotoğrafı yalnız hesabın sahibince yüklenir (OwnUserFilter).
-    /// Türü istemcinin söylediğinden ve dosya adından değil dosyanın ilk
-    /// baytlarından anlaşılır; yalnız JPEG, PNG, HEIC ve WebP, en çok 5 MB.
+    /// Yalnız JPEG ve PNG, en çok 5 MB; içindeki üst veri (konum dahil)
+    /// saklanmadan önce silinir (<see cref="ProfilePhotoSanitizer"/>).
     /// </summary>
     [HttpPost("{id}/upload-profile-photo")]
     [Consumes("multipart/form-data")]
@@ -311,17 +312,17 @@ public class UserController : ControllerBase
         if (file.Length > MaxProfilePhotoBytes)
             return BadRequest(new ApiResponse<string> { Message = "Fotoğraf en çok 5 MB olabilir." });
 
-        var image = await SniffImageAsync(file);
+        var image = await ProfilePhotoSanitizer.SanitizeAsync(file, HttpContext.RequestAborted);
         if (image is null)
-            return BadRequest(new ApiResponse<string> { Message = "Yalnız JPEG, PNG, HEIC ya da WebP fotoğraf yüklenebilir." });
+            return BadRequest(new ApiResponse<string> { Message = "Yalnız JPEG ya da PNG fotoğraf yüklenebilir." });
 
         var user = await _mediator.Send(new GetUserByIdRequest() { UserId = id });
 
-        var key = $"profile-photos/{id}/profile{image.Value.Extension}";
+        var key = $"profile-photos/{id}/profile{image.Extension}";
 
-        await using (var stream = file.OpenReadStream())
+        using (var stream = new MemoryStream(image.Bytes, writable: false))
         {
-            await _amazonService.UploadFileAsync(key, stream, image.Value.ContentType);
+            await _amazonService.UploadFileAsync(key, stream, image.ContentType);
         }
 
         await _mediator.Send(new UploadPhotoByIdRequest() { Id = user.UserId, PhotoUrl = key });
@@ -339,30 +340,6 @@ public class UserController : ControllerBase
         });
     }
 
-    /// <summary>Dosyanın ilk baytlarından resim türü; tanınmazsa null.</summary>
-    private static async Task<(string Extension, string ContentType)?> SniffImageAsync(IFormFile file)
-    {
-        var head = new byte[12];
-        await using var stream = file.OpenReadStream();
-        var read = await stream.ReadAsync(head.AsMemory(0, head.Length));
-        if (read < 12) return null;
-
-        if (head[0] == 0xFF && head[1] == 0xD8 && head[2] == 0xFF)
-            return (".jpg", "image/jpeg");
-        if (head[0] == 0x89 && head[1] == 0x50 && head[2] == 0x4E && head[3] == 0x47 &&
-            head[4] == 0x0D && head[5] == 0x0A && head[6] == 0x1A && head[7] == 0x0A)
-            return (".png", "image/png");
-        var ascii = System.Text.Encoding.ASCII;
-        if (ascii.GetString(head, 0, 4) == "RIFF" && ascii.GetString(head, 8, 4) == "WEBP")
-            return (".webp", "image/webp");
-        if (ascii.GetString(head, 4, 4) == "ftyp")
-        {
-            var brand = ascii.GetString(head, 8, 4);
-            if (brand is "heic" or "heix" or "hevc" or "mif1" or "msf1")
-                return (".heic", "image/heic");
-        }
-        return null;
-    }
 }
 
 /// <summary>Ana dil gövdesi: <c>{"nativeLanguage": "sq"}</c>.</summary>
