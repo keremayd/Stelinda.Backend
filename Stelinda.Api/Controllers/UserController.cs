@@ -17,7 +17,7 @@ using Service.Handlers.Commands;
 
 namespace Stelinda.Api.Controllers;
 
-//[Authorize]
+[Authorize]
 [ApiController]
 [Route("api/users")]
 public class UserController : ControllerBase
@@ -31,6 +31,12 @@ public class UserController : ControllerBase
         _amazonService = amazonService;
     }
 
+    /// <summary>
+    /// Bütün kullanıcıların kimlik ve takma adları. Uygulama kullanmıyor;
+    /// herkese açıktı ve kimlikler başka uçlarda başkası adına istek atmaya
+    /// yarıyordu. Yalnız yönetici (rol belirteçte henüz yok: kapalı).
+    /// </summary>
+    [Authorize(Roles = "Admin")]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<GetAllUsersResponse>>>> GetAllUsers()
     {
@@ -287,19 +293,36 @@ public class UserController : ControllerBase
         });
     }
     
+    /// <summary>Profil fotoğrafının üst sınırı; uygulama yüklemeden önce küçültür.</summary>
+    private const long MaxProfilePhotoBytes = 5 * 1024 * 1024;
+
+    /// <summary>
+    /// Profil fotoğrafı yalnız hesabın sahibince yüklenir (OwnUserFilter).
+    /// Türü istemcinin söylediğinden ve dosya adından değil dosyanın ilk
+    /// baytlarından anlaşılır; yalnız JPEG, PNG, HEIC ve WebP, en çok 5 MB.
+    /// </summary>
     [HttpPost("{id}/upload-profile-photo")]
     [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxProfilePhotoBytes + 64 * 1024)]
     public async Task<ActionResult<ApiResponse<UploadUserFileResponse>>> UploadUserFile([FromRoute] string id, [FromForm] IFormFile file)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new ApiResponse<string> { Message = "Dosya boş." });
+        if (file.Length > MaxProfilePhotoBytes)
+            return BadRequest(new ApiResponse<string> { Message = "Fotoğraf en çok 5 MB olabilir." });
+
+        var image = await SniffImageAsync(file);
+        if (image is null)
+            return BadRequest(new ApiResponse<string> { Message = "Yalnız JPEG, PNG, HEIC ya da WebP fotoğraf yüklenebilir." });
 
         var user = await _mediator.Send(new GetUserByIdRequest() { UserId = id });
 
-        var extension = Path.GetExtension(file.FileName);
-        var key = $"profile-photos/{id}/profile{extension}";
+        var key = $"profile-photos/{id}/profile{image.Value.Extension}";
 
-        await _amazonService.UploadFileAsync(key, file.OpenReadStream(), file.ContentType);
+        await using (var stream = file.OpenReadStream())
+        {
+            await _amazonService.UploadFileAsync(key, stream, image.Value.ContentType);
+        }
 
         await _mediator.Send(new UploadPhotoByIdRequest() { Id = user.UserId, PhotoUrl = key });
 
@@ -314,6 +337,31 @@ public class UserController : ControllerBase
                 SignedUrl = photoSignedUrl
             } 
         });
+    }
+
+    /// <summary>Dosyanın ilk baytlarından resim türü; tanınmazsa null.</summary>
+    private static async Task<(string Extension, string ContentType)?> SniffImageAsync(IFormFile file)
+    {
+        var head = new byte[12];
+        await using var stream = file.OpenReadStream();
+        var read = await stream.ReadAsync(head.AsMemory(0, head.Length));
+        if (read < 12) return null;
+
+        if (head[0] == 0xFF && head[1] == 0xD8 && head[2] == 0xFF)
+            return (".jpg", "image/jpeg");
+        if (head[0] == 0x89 && head[1] == 0x50 && head[2] == 0x4E && head[3] == 0x47 &&
+            head[4] == 0x0D && head[5] == 0x0A && head[6] == 0x1A && head[7] == 0x0A)
+            return (".png", "image/png");
+        var ascii = System.Text.Encoding.ASCII;
+        if (ascii.GetString(head, 0, 4) == "RIFF" && ascii.GetString(head, 8, 4) == "WEBP")
+            return (".webp", "image/webp");
+        if (ascii.GetString(head, 4, 4) == "ftyp")
+        {
+            var brand = ascii.GetString(head, 8, 4);
+            if (brand is "heic" or "heix" or "hevc" or "mif1" or "msf1")
+                return (".heic", "image/heic");
+        }
+        return null;
     }
 }
 

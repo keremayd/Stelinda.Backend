@@ -33,7 +33,7 @@ public class GetRefreshTokenByNameQueryHandler : IRequestHandler<RefreshTokenReq
         var tokenValidationParameters = new TokenValidationParameters()
         {
             ValidateIssuer = true,
-            ValidateAudience = false, //TODO true olacak prod çıkışında
+            ValidateAudience = true,
             ValidateLifetime = false,
             ValidateIssuerSigningKey = true,
             ValidIssuer = _jwtOptions.ValidIssuer,

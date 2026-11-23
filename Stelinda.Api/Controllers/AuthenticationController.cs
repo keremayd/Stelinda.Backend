@@ -8,7 +8,8 @@ using Common.Extensions;
 using Common.Helper;
 using Google.Apis.Auth;
 using MediatR;
-using Microsoft.AspNetCore.Cors;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using Service.DataTransferObjects.Requests;
 using Service.DataTransferObjects.Requests.Authentication;
@@ -19,15 +20,26 @@ namespace Stelinda.Api.Controllers;
 
 [ApiController]
 [Route("api/authentication")]
+// Giriş uçları oturumsuz çağrılır; IP başına deneme sınırı var (Program.cs).
+[AllowAnonymous]
+[EnableRateLimiting("authentication")]
 public class AuthenticationController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly IAwsService _amazonService;
 
-    public AuthenticationController(IMediator mediator, IAwsService amazonService)
+    /// <summary>
+    /// Kabul edilen Google OAuth istemcileri (kimlik belirtecinin <c>aud</c>
+    /// alanı). Önceden denetlenmiyordu: başka bir uygulama için alınmış
+    /// Google belirteci de kabul ediliyordu.
+    /// </summary>
+    private readonly string[] _googleClientIds;
+
+    public AuthenticationController(IMediator mediator, IAwsService amazonService, IConfiguration configuration)
     {
         _mediator = mediator;
         _amazonService = amazonService;
+        _googleClientIds = configuration.GetSection("Google:ClientIds").Get<string[]>() ?? Array.Empty<string>();
     }
 
     [HttpPost("register")]
@@ -104,8 +116,19 @@ public class AuthenticationController : ControllerBase
     [HttpPost("google-login")]
     public async Task<ActionResult<ApiResponse<AuthenticateResponse>>> GoogleLogin([FromBody] ValidateUserByEmailRequest request)
     {
-        // 1. Google Token'ı doğrula
-        var payload = await GoogleJsonWebSignature.ValidateAsync(request.IdToken);
+        // 1. Google belirtecini doğrula: imza, süre ve bu uygulamanın istemcisi.
+        // İstemci yapılandırılmadıysa Google girişi kapalı (fail-closed).
+        if (_googleClientIds.Length == 0) return Unauthorized();
+        GoogleJsonWebSignature.Payload payload;
+        try
+        {
+            payload = await GoogleJsonWebSignature.ValidateAsync(request.IdToken,
+                new GoogleJsonWebSignature.ValidationSettings { Audience = _googleClientIds });
+        }
+        catch (InvalidJwtException)
+        {
+            return Unauthorized();
+        }
 
         // 2.1 Email ile kullanıcı var mı kontrol et
         var getUserByEmailResponse = await _mediator.Send(new GetUserByEmailRequest { Email = payload.Email });

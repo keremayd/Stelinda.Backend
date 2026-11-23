@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Service.DataTransferObjects.Requests.Badge;
@@ -6,6 +7,7 @@ using Service.DataTransferObjects.Responses.Badge;
 namespace Stelinda.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/badges")]
 public class BadgeController : ControllerBase
 {

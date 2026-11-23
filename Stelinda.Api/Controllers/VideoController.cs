@@ -13,6 +13,7 @@ using Service.Handlers.Commands;
 namespace Stelinda.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/videos")]
 public class VideoController : ControllerBase
 {

@@ -11,10 +11,19 @@ public class ExceptionHandlingMiddleware
     private readonly RequestDelegate _next;
     private readonly ILogger<ExceptionHandlingMiddleware> _logger;
 
-    public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
+    /// <summary>
+    /// Beklenmeyen hatanın iletisi yalnız geliştirmede yanıta yazılır; yayında
+    /// iç ayrıntı (bağlantı, sorgu, dosya yolu) dışarı sızmasın. Ayrıntı
+    /// sunucu kaydında kalır.
+    /// </summary>
+    private readonly bool _showDetails;
+
+    public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger,
+        IHostEnvironment environment)
     {
         _next = next;
         _logger = logger;
+        _showDetails = environment.IsDevelopment();
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -49,8 +58,8 @@ public class ExceptionHandlingMiddleware
                     ["data"] = null,
                     ["code"] = "500",
                     ["errorCode"] = "UnhandledException",
-                    ["message"] = exception.Message,
-                    ["detailedMessage"] = exception.InnerException?.Message,
+                    ["message"] = _showDetails ? exception.Message : "Beklenmeyen bir hata oluştu.",
+                    ["detailedMessage"] = _showDetails ? exception.InnerException?.Message : null,
                 }));
 
                 return;
@@ -69,7 +78,7 @@ public class ExceptionHandlingMiddleware
                 ["errorCode"] = stelindaException.ErrorMessage?.Code,
                 ["errorList"] = errorList,
                 ["message"] = stelindaException.ErrorMessage?.Message,
-                ["detailedMessage"] = stelindaException.InnerException?.Message,
+                ["detailedMessage"] = _showDetails ? stelindaException.InnerException?.Message : null,
             };
             
             int httpStatus = stelindaException.HttpStatusCode != null
