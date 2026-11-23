@@ -15,6 +15,7 @@ using Service.DataTransferObjects.Requests;
 using Service.DataTransferObjects.Requests.Authentication;
 using Service.DataTransferObjects.Responses;
 using Service.Handlers.Commands;
+using Stelinda.Api.Media;
 
 namespace Stelinda.Api.Controllers;
 
@@ -42,10 +43,33 @@ public class AuthenticationController : ControllerBase
         _googleClientIds = configuration.GetSection("Google:ClientIds").Get<string[]>() ?? Array.Empty<string>();
     }
 
+    /// <summary>
+    /// Kayıtta gelen fotoğrafın üst sınırı. Uygulama kayıtta hazır
+    /// görsellerden birini yolluyor (3–5,5 MB); yükleme ucunun 5 MB'ı onları
+    /// reddederdi.
+    /// </summary>
+    private const long MaxRegisterPhotoBytes = 8 * 1024 * 1024;
+
+    /// <summary>
+    /// Kayıt oturumsuz çağrılır: fotoğraf isteğe bağlı, geldiyse kullanıcı
+    /// açılmadan önce denetlenir ve temizlenir (<see cref="ProfilePhotoSanitizer"/>).
+    /// Önceden her dosya, istemcinin söylediği uzantı ve türle saklanıyordu;
+    /// fotoğrafsız istek de 500 veriyordu.
+    /// </summary>
     [HttpPost("register")]
+    [RequestSizeLimit(MaxRegisterPhotoBytes + 64 * 1024)]
     public async Task<ActionResult<ApiResponse<RegisterUserResponse>>> RegisterUser([FromForm] RegisterUserWithPhotoRequest  request)
     {
-        var file = request.File;
+        ProfilePhotoSanitizer.Result? photo = null;
+        if (request.File is { Length: > 0 } file)
+        {
+            if (file.Length > MaxRegisterPhotoBytes)
+                return BadRequest(new ApiResponse<string> { Message = "Fotoğraf en çok 8 MB olabilir." });
+            photo = await ProfilePhotoSanitizer.SanitizeAsync(file, HttpContext.RequestAborted);
+            if (photo is null)
+                return BadRequest(new ApiResponse<string> { Message = "Yalnız JPEG ya da PNG fotoğraf yüklenebilir." });
+        }
+
         var name = request.FirstName + request.LastName;
         var slug = name.ToSluggedUsername(); 
 
@@ -63,15 +87,18 @@ public class AuthenticationController : ControllerBase
         };
         
         var response = await _mediator.Send(registerUserRequest);
-        
-        var extension = Path.GetExtension(file.FileName);
-        var key = $"profile-photos/{response.User!.Id}/profile{extension}";
 
-        await _amazonService.UploadFileAsync(key, file.OpenReadStream(), file.ContentType);
-        
-        await _mediator.Send(new UploadPhotoByIdRequest() { Id = response.User!.Id, PhotoUrl = key });
-
-        var photoSignedUrl = _amazonService.GeneratePreSignedUrl(key, BucketType.ProfilePhotos);
+        var photoSignedUrl = string.Empty;
+        if (photo is not null)
+        {
+            var key = $"profile-photos/{response.User!.Id}/profile{photo.Extension}";
+            using (var stream = new MemoryStream(photo.Bytes, writable: false))
+            {
+                await _amazonService.UploadFileAsync(key, stream, photo.ContentType);
+            }
+            await _mediator.Send(new UploadPhotoByIdRequest() { Id = response.User!.Id, PhotoUrl = key });
+            photoSignedUrl = _amazonService.GeneratePreSignedUrl(key, BucketType.ProfilePhotos);
+        }
 
         return Ok(new ApiResponse<RegisterUserResponse>()
         {
@@ -89,27 +116,11 @@ public class AuthenticationController : ControllerBase
     {
         var validateUserResponse = await _mediator.Send(new ValidateUserRequest() { Email = request.Email, Password = request.Password });
 
-        var userRank = await _mediator.Send(new GetRankByUserIdRequest() { UserId = validateUserResponse.User.Id });
-        
-        var createTokenResponse = await _mediator.Send(new CreateTokenRequest() { Id = validateUserResponse.User.Id, Password = request.Password, PopulateExp = true});
-
-        var photoSignedUrl = _amazonService.GeneratePreSignedUrl(validateUserResponse.User.ProfilePhoto!, BucketType.ProfilePhotos);
-        
+        // Google ve Apple girişleriyle aynı oturum; fotoğrafı olmayan hesapta
+        // adres boş döner (önceden boş anahtarı imzalamaya çalışıyordu).
         return Ok(new ApiResponse<AuthenticateResponse>()
         {
-            Data = new AuthenticateResponse()
-            {
-                UserId = validateUserResponse.User.Id,
-                FirstName = validateUserResponse.User.FirstName!,
-                LastName = validateUserResponse.User.LastName!,
-                DisplayName = validateUserResponse.User.DisplayName,
-                ProfilePhotoUrl = photoSignedUrl,
-                UserNickname = validateUserResponse.User.UserNickname,
-                UserName = validateUserResponse.User.UserName!,
-                UserRank = userRank,
-                AccessToken = createTokenResponse.AccessToken,
-                RefreshToken = createTokenResponse.RefreshToken
-            }
+            Data = await SessionFor(validateUserResponse.User)
         });
     }
     
@@ -144,14 +155,10 @@ public class AuthenticationController : ControllerBase
             
             var registeredUser = await _mediator.Send(new RegisterUserRequest() { Email = payload.Email, UserName = slug, FirstName = payload.GivenName, LastName = payload.FamilyName, UserNickname = slug , Roles = new List<string>(){"User"}});
             
-            // 2.3 Profil fotoğrafını google'dan aldık
-            var stream = await ImageHelper.DownloadImageFromUrlAsync(payload.Picture);
-            var key = $"profile-photos/{registeredUser.User!.Id}/profile.png";
+            // 2.3 Profil fotoğrafı Google'dan; yoksa ya da inmezse hesap
+            // fotoğrafsız açılır (önceden 500 veriyordu, hesap yarım kalıyordu).
+            await TryCopyGooglePhotoAsync(payload.Picture, registeredUser.User!.Id);
 
-            await _amazonService.UploadFileAsync(key, stream, "image/png");
-            
-            await _mediator.Send(new UploadPhotoByIdRequest() { Id = registeredUser.User.Id, PhotoUrl = key });
-            
             getUserByEmailResponse.User = registeredUser.User;
         }
 
@@ -182,6 +189,30 @@ public class AuthenticationController : ControllerBase
     /// fotoğraf adresi. Apple ile açılan hesabın fotoğrafı yok; Google ile de
     /// girebildiği için (e-posta eşleşmesi) adres boşsa imzalanmaz.
     /// </summary>
+    private async Task TryCopyGooglePhotoAsync(string? pictureUrl, string userId)
+    {
+        if (string.IsNullOrWhiteSpace(pictureUrl)) return;
+        try
+        {
+            await using var stream = await ImageHelper.DownloadImageFromUrlAsync(pictureUrl);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var photo = ProfilePhotoSanitizer.Sanitize(buffer.ToArray());
+            if (photo is null) return;
+
+            var key = $"profile-photos/{userId}/profile{photo.Extension}";
+            using (var upload = new MemoryStream(photo.Bytes, writable: false))
+            {
+                await _amazonService.UploadFileAsync(key, upload, photo.ContentType);
+            }
+            await _mediator.Send(new UploadPhotoByIdRequest() { Id = userId, PhotoUrl = key });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            // Fotoğraf inmezse hesap fotoğrafsız kalır; baş harfler görünür.
+        }
+    }
+
     private async Task<AuthenticateResponse> SessionFor(Postgres.Models.User user)
     {
         var userRank = await _mediator.Send(new GetRankByUserIdRequest() { UserId = user.Id });
