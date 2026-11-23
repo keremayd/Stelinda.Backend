@@ -28,13 +28,17 @@ public class ValidateUserCommandHandler : IRequestHandler<ValidateUserRequest, V
 
     public async Task<ValidateUserResponse> Handle(ValidateUserRequest request, CancellationToken cancellationToken)
     {
-        var user = await _userManager.FindByEmailAsync(request.Email);
-        if (user == null)
-            throw new StelindaException(ErrorCode.NoDataInUsers.CreateMessage(),
-                ErrorCode.NoDataInUsers.GetDescription(), HttpStatusCode.Unauthorized);
-
-        var response = await _userManager.CheckPasswordAsync(user, request.Password);
-        if (!response)
+        // Kayıtsız e-posta ile yanlış şifre aynı cevabı alır: ayrı hata kodu
+        // (ya da kısa süren cevap) bir e-postanın kayıtlı olup olmadığını
+        // söylüyordu. Kayıtsız e-postada da bir şifre özeti doğrulanır ki
+        // süre farkı da kalmasın.
+        var user = string.IsNullOrWhiteSpace(request.Email)
+            ? null
+            : await _userManager.FindByEmailAsync(request.Email);
+        var passwordOk = user is { PasswordHash: not null }
+            ? await _userManager.CheckPasswordAsync(user, request.Password ?? string.Empty)
+            : VerifyAgainstDummy(request.Password);
+        if (user == null || !passwordOk)
             throw new StelindaException(ErrorCode.TheUserAuthenticatedFailed.CreateMessage(),
                 ErrorCode.TheUserAuthenticatedFailed.GetDescription(), HttpStatusCode.Unauthorized);
         
@@ -42,5 +46,19 @@ public class ValidateUserCommandHandler : IRequestHandler<ValidateUserRequest, V
         {
             User = user
         };
+    }
+
+    /// <summary>Kayıtsız e-postada doğrulanan özet; uygulamanın kendi şifre
+    /// özetleyicisiyle bir kez üretilir.</summary>
+    private static string? _dummyHash;
+
+    /// <summary>Yalnız süreyi eşitler: sonuç ne olursa olsun false döner, yani
+    /// şifresi olmayan (Google/Apple) hesaba bu yoldan girilemez.</summary>
+    private bool VerifyAgainstDummy(string? password)
+    {
+        var hasher = _userManager.PasswordHasher;
+        _dummyHash ??= hasher.HashPassword(new User(), Guid.NewGuid().ToString("N"));
+        hasher.VerifyHashedPassword(new User(), _dummyHash, password ?? string.Empty);
+        return false;
     }
 }

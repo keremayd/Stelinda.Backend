@@ -119,13 +119,17 @@ public class AuthenticationController : ControllerBase
         // 1. Google belirtecini doğrula: imza, süre ve bu uygulamanın istemcisi.
         // İstemci yapılandırılmadıysa Google girişi kapalı (fail-closed).
         if (_googleClientIds.Length == 0) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(request.IdToken)) return Unauthorized();
         GoogleJsonWebSignature.Payload payload;
         try
         {
             payload = await GoogleJsonWebSignature.ValidateAsync(request.IdToken,
                 new GoogleJsonWebSignature.ValidationSettings { Audience = _googleClientIds });
         }
-        catch (InvalidJwtException)
+        // Biçimi bozuk belirteç (base64 ya da JSON değil) kütüphaneden
+        // InvalidJwtException olarak gelmiyor; o da geçersiz belirteçtir, 500 değil.
+        catch (Exception ex) when (ex is InvalidJwtException or FormatException or ArgumentException
+                                       or Newtonsoft.Json.JsonException)
         {
             return Unauthorized();
         }
