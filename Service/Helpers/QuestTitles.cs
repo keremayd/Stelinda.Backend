@@ -41,16 +41,6 @@ public static class QuestTitles
             ["tr"] = new("{0} rövanş kartını geri kazan"),
             ["sq"] = new("Fito sërish {0} kartë revanshi", "Fito sërish {0} karta revanshi"),
         },
-        ["streak_continue"] = new()
-        {
-            ["tr"] = new("Serini sürdür"),
-            ["sq"] = new("Vazhdo serinë"),
-        },
-        ["streak_start"] = new()
-        {
-            ["tr"] = new("Serini başlat"),
-            ["sq"] = new("Fillo serinë"),
-        },
     };
 
     public static string Format(string titleKey, string locale, int target)

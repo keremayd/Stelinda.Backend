@@ -21,8 +21,8 @@ public static class QuestRules
 {
     /// <param name="TitleKey">
     /// Başlığın şablonu (<see cref="QuestTitles"/>). Görev anahtarından ayrı:
-    /// aynı görevin başlığı duruma göre değişiyor ("Serini sürdür" /
-    /// "Serini başlat") ve hedef sayısı başlığın içinde.
+    /// aynı şablonu birden çok görev kullanıyor ("{0} kelimeyi doğru bil")
+    /// ve hedef sayısı başlığın içinde.
     /// </param>
     public sealed record QuestDefinition(
         string Key,
@@ -39,19 +39,19 @@ public static class QuestRules
     /// <param name="ReachableWords">Bugün doğru bilinebilecek kelime: tanışılanlar + açık ünitelerde görülmemişler.</param>
     /// <param name="ArticleWords">Bugün artikeli sorulabilecek kelime.</param>
     /// <param name="PendingReviews">Günün başında bekleyen rövanş kartı. Bugün yapılan yanlışlar sayılmaz: görev yanlış yaptırmaya çalışmamalı.</param>
-    /// <param name="HadStreak">Bugünden önce süren bir seri var mı.</param>
     public sealed record QuestDayState(
         int NewWords,
         int ReachableWords,
         int ArticleWords,
-        int PendingReviews,
-        bool HadStreak);
+        int PendingReviews);
 
     // Ödüller bilet tavanıyla birlikte ayarlanır (bkz. LivesRules): günde
     // üç görev, her biri 1 bilet (24 Kas 2026, kullanıcı kararı; önceden beş
     // görev, günde 10 bilet). Tavan 5 olduğu için görevler biteni tamamlar,
-    // bilet bankası olmaz. "Güne başla" (yalnız açmak) ve "5 kelimeyi doğru
-    // bil" (8/10 kelimeyle örtüşüyordu) kalktı.
+    // bilet bankası olmaz. "Güne başla" (yalnız açmak) kalktı; "Serini
+    // sürdür" de kalktı, yerine "5 kelimeyi doğru bil" (kullanıcı: oynayan
+    // herkes seriyi zaten sürdürüyor, görev bir şey istemiyordu).
+    private static readonly QuestDefinition CorrectFive = new("correct_five", "correct_n", 5, 1);
     private static readonly QuestDefinition LearnThree = new("learn_three", "learn_n", 3, 1);
     private static readonly QuestDefinition CorrectEight = new("correct_eight", "correct_n", 8, 1);
     private static readonly QuestDefinition ArticleThree = new("article_three", "article_n", 3, 1);
@@ -65,9 +65,6 @@ public static class QuestRules
         var target = Math.Clamp(pendingReviews, 1, MaxReviewTarget);
         return new QuestDefinition("review_two", "review_n", target, 1);
     }
-
-    private static QuestDefinition StreakQuest(bool hadStreak) =>
-        new("streak_keep", hadStreak ? "streak_continue" : "streak_start", 1, 1);
 
     /// <summary>
     /// Günün görevleri, yuva sırasıyla. Ödülü alınmış seçenek durum değişse de
@@ -88,7 +85,7 @@ public static class QuestRules
                 (ArticleThree, day.ArticleWords >= ArticleThree.Target),
                 (CorrectTen, day.ReachableWords >= CorrectTen.Target),
             ],
-            [(StreakQuest(day.HadStreak), true)],
+            [(CorrectFive, day.ReachableWords >= CorrectFive.Target)],
         ];
 
         var chosen = new List<QuestDefinition>();
@@ -110,7 +107,6 @@ public static class QuestRules
         CancellationToken cancellationToken)
     {
         var (startUtc, endUtc) = GetDayUtcRange(utcNow);
-        var today = GetIstanbulDate(utcNow);
 
         var units = await KartyUnitProgressReader.ReadAsync(context, userId, cancellationToken);
         var unseenOpen = units
@@ -148,22 +144,11 @@ public static class QuestRules
                      (h.ReviewedDate == null || h.ReviewedDate >= startUtc),
                 cancellationToken);
 
-        var streak = await context.UserStreaks
-            .AsNoTracking()
-            .Where(s => s.UserId == userId)
-            .Select(s => new { s.CurrentStreak, s.LastActiveDate })
-            .FirstOrDefaultAsync(cancellationToken);
-        var hadStreak = streak is not null &&
-                        (streak.LastActiveDate == today
-                            ? streak.CurrentStreak > 1
-                            : streak.CurrentStreak > 0);
-
         return new QuestDayState(
             NewWords: unseenOpen + introducedToday,
             ReachableWords: learnings.Count + unseenOpen,
             ArticleWords: articleOpen + unseenOpen,
-            PendingReviews: pendingReviews,
-            HadStreak: hadStreak);
+            PendingReviews: pendingReviews);
     }
 
     // Gün sınırı tanımı `IstanbulDay`'e taşındı: görevlere özel bir kural
@@ -189,10 +174,10 @@ public static class QuestRules
         CancellationToken cancellationToken)
     {
         var (startUtc, endUtc) = GetDayUtcRange(utcNow);
-        var today = GetIstanbulDate(utcNow);
 
         switch (questKey)
         {
+            case "correct_five":
             case "correct_eight":
             case "correct_ten":
                 return await context.UserKartyLearnings
@@ -230,14 +215,6 @@ public static class QuestRules
                              h.ReviewedDate >= startUtc &&
                              h.ReviewedDate < endUtc,
                         cancellationToken);
-
-            case "streak_keep":
-                var played = await context.UserDailyActivities
-                    .AsNoTracking()
-                    .AnyAsync(
-                        a => a.UserId == userId && a.ActivityDate == today && a.Played,
-                        cancellationToken);
-                return played ? 1 : 0;
 
             default:
                 return 0;
