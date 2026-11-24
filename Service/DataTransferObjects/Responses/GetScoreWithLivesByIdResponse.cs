@@ -29,6 +29,13 @@ public class GetScoreWithLivesByIdResponse
     /// </summary>
     public DateTime? NextTicketAt { get; set; }
 
+    /// <summary>
+    /// Bir biletin yenilenme süresi, dakika (<c>LivesRules.RegenInterval</c>).
+    /// Tavandayken geri sayım yok; bilet penceresi kuralı bununla söyler:
+    /// "Bilet harcayınca her 4 saatte 1 yenilenir."
+    /// </summary>
+    public int TicketRegenMinutes { get; set; }
+
     public LeagueProgressResponse? League { get; set; }
 
     /// <summary>Ana ekranın üst şeridi için: günlük seri ve elde kalan koruma.</summary>

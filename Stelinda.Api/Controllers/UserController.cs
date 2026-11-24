@@ -256,6 +256,7 @@ public class UserController : ControllerBase
                 NextTicketAt = getLivesByIdResponse.Lives < getLivesByIdResponse.MaxLives
                     ? getLivesByIdResponse.LastLivesResetTime
                     : null,
+                TicketRegenMinutes = (int)Service.Helpers.LivesRules.RegenInterval.TotalMinutes,
                 League = getLeagueByUserIdResponse,
                 Streak = getStreakResponse.CurrentStreak,
                 LongestStreak = getStreakResponse.LongestStreak,

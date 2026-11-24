@@ -48,15 +48,14 @@ public static class QuestRules
         bool HadStreak);
 
     // Ödüller bilet tavanıyla birlikte ayarlanır (bkz. LivesRules): günde
-    // toplam 10 bilet, tek seferde en fazla 3. Ödül tavanı aşamadığı için tek
-    // bir ödülün tavanın yanında büyük kalmaması gerekir; aksi hâlde tavana
-    // yakın oyuncunun ödülü boşa gider.
-    private static readonly QuestDefinition CheckIn = new("checkin", "checkin", 1, 1);
-    private static readonly QuestDefinition CorrectFive = new("correct_five", "correct_n", 5, 2);
-    private static readonly QuestDefinition LearnThree = new("learn_three", "learn_n", 3, 2);
-    private static readonly QuestDefinition CorrectEight = new("correct_eight", "correct_n", 8, 2);
-    private static readonly QuestDefinition ArticleThree = new("article_three", "article_n", 3, 2);
-    private static readonly QuestDefinition CorrectTen = new("correct_ten", "correct_n", 10, 2);
+    // üç görev, her biri 1 bilet (24 Kas 2026, kullanıcı kararı; önceden beş
+    // görev, günde 10 bilet). Tavan 5 olduğu için görevler biteni tamamlar,
+    // bilet bankası olmaz. "Güne başla" (yalnız açmak) ve "5 kelimeyi doğru
+    // bil" (8/10 kelimeyle örtüşüyordu) kalktı.
+    private static readonly QuestDefinition LearnThree = new("learn_three", "learn_n", 3, 1);
+    private static readonly QuestDefinition CorrectEight = new("correct_eight", "correct_n", 8, 1);
+    private static readonly QuestDefinition ArticleThree = new("article_three", "article_n", 3, 1);
+    private static readonly QuestDefinition CorrectTen = new("correct_ten", "correct_n", 10, 1);
 
     /// <summary>Rövanş görevinin en yüksek hedefi; bekleyen kart azsa onunla sınırlıdır.</summary>
     private const int MaxReviewTarget = 2;
@@ -64,11 +63,11 @@ public static class QuestRules
     private static QuestDefinition ReviewQuest(int pendingReviews)
     {
         var target = Math.Clamp(pendingReviews, 1, MaxReviewTarget);
-        return new QuestDefinition("review_two", "review_n", target, 2);
+        return new QuestDefinition("review_two", "review_n", target, 1);
     }
 
     private static QuestDefinition StreakQuest(bool hadStreak) =>
-        new("streak_keep", hadStreak ? "streak_continue" : "streak_start", 1, 3);
+        new("streak_keep", hadStreak ? "streak_continue" : "streak_start", 1, 1);
 
     /// <summary>
     /// Günün görevleri, yuva sırasıyla. Ödülü alınmış seçenek durum değişse de
@@ -80,8 +79,6 @@ public static class QuestRules
     {
         (QuestDefinition Quest, bool Doable)[][] slots =
         [
-            [(CheckIn, true)],
-            [(CorrectFive, day.ReachableWords >= CorrectFive.Target)],
             [
                 (LearnThree, day.NewWords >= LearnThree.Target),
                 (CorrectEight, day.ReachableWords >= CorrectEight.Target),
@@ -196,16 +193,6 @@ public static class QuestRules
 
         switch (questKey)
         {
-            case "checkin":
-                var checkedIn = await context.UserDailyActivities
-                    .AsNoTracking()
-                    .AnyAsync(
-                        // Korunan gün giriş sayılmaz; görev gerçek girişi ister.
-                        a => a.UserId == userId && a.ActivityDate == today && !a.Frozen,
-                        cancellationToken);
-                return checkedIn ? 1 : 0;
-
-            case "correct_five":
             case "correct_eight":
             case "correct_ten":
                 return await context.UserKartyLearnings

@@ -21,11 +21,6 @@ public static class QuestTitles
 
     private static readonly Dictionary<string, Dictionary<string, Template>> Templates = new()
     {
-        ["checkin"] = new()
-        {
-            ["tr"] = new("Güne başla"),
-            ["sq"] = new("Fillo ditën"),
-        },
         ["correct_n"] = new()
         {
             ["tr"] = new("{0} kelimeyi doğru bil"),
