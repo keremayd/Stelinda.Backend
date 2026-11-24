@@ -70,6 +70,14 @@ public class UserKartyLearning
     [Column("reinforced_at")]
     public DateTime? ReinforcedAt { get; set; }
 
+    /// <summary>
+    /// Artikelin tekrar vakti (24 Kas 2026): patikanın Artikel adımı vadesi
+    /// gelen kelimeleri önce sorar. Boşsa artikel hiç takvime girmemiş,
+    /// vadesi gelmiş sayılır (<c>ArticleStepRules</c>).
+    /// </summary>
+    [Column("article_due_date")]
+    public DateTime? ArticleDueDate { get; set; }
+
     public User? User { get; set; }
     public Karty? Karty { get; set; }
 }

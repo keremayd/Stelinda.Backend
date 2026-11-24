@@ -30,6 +30,7 @@ public class StelindaContext : IdentityDbContext<User>
     public DbSet<KartyUnitTranslation> KartyUnitTranslations { get; set; }
     public DbSet<KartyTranslation> KartyTranslations { get; set; }
     public DbSet<UserKartyUnitState> UserKartyUnitStates { get; set; }
+    public DbSet<UserKartyArticleStep> UserKartyArticleSteps { get; set; }
     public DbSet<UserKartyHistory> UserKartyHistories { get; set; }
     public DbSet<UserKartyLearning> UserKartyLearnings { get; set; }
     public DbSet<UserDailyActivity> UserDailyActivities { get; set; }

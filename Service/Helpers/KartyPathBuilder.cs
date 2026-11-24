@@ -38,7 +38,8 @@ public static class KartyPathBuilder
         IReadOnlyList<PathCard> cards,
         IReadOnlyList<PathLearning> learnings,
         DateTime utcNow,
-        int recordedUnlockSequence = 0)
+        int recordedUnlockSequence = 0,
+        IReadOnlyDictionary<int, PathArticleStep>? articleSteps = null)
     {
         var learningById = learnings.ToDictionary(item => item.KartyId);
         var cardsByUnit = units.ToDictionary(
@@ -92,6 +93,7 @@ public static class KartyPathBuilder
             response.Units.Add(unitResponse);
 
             var decks = KartyDeckRules.Split(unitCards);
+            var articleAfter = ArticleStepRules.AfterDeck(decks.Count);
             for (var d = 0; d < decks.Count; d++)
             {
                 var deck = decks[d];
@@ -104,6 +106,15 @@ public static class KartyPathBuilder
                         Deck = d + 1,
                         NewGoal = deck.Count,
                     });
+                    if (d + 1 == articleAfter)
+                    {
+                        unitResponse.Steps.Add(new KartyPathStepResponse
+                        {
+                            State = "locked",
+                            Article = true,
+                            NewGoal = ArticleStepRules.RoundGoal,
+                        });
+                    }
                     continue;
                 }
 
@@ -133,6 +144,16 @@ public static class KartyPathBuilder
                 };
                 if (state == "current") current = step;
                 unitResponse.Steps.Add(step);
+
+                if (d + 1 == articleAfter)
+                {
+                    var article = ArticleStep(
+                        articleSteps?.GetValueOrDefault(unit.UnitId),
+                        LegacyPassed(decks.Skip(d + 1), unitCards, learningById),
+                        current is null);
+                    if (article.State == "current") current = article;
+                    unitResponse.Steps.Add(article);
+                }
             }
 
             // Desteler bitti, ünite hedefe ulaşmadı: sıradaki iş pekiştirme.
@@ -154,7 +175,7 @@ public static class KartyPathBuilder
                 host.Steps.Add(current);
             }
         }
-        if (current is not null && !current.Reinforce)
+        if (current is not null && !current.Reinforce && !current.Article)
         {
             current.ReviewCount = Math.Min(
                 reviews,
@@ -164,6 +185,42 @@ public static class KartyPathBuilder
         AssignUnitStates(response);
         return response;
     }
+
+    /// <summary>
+    /// Ünitenin Artikel adımı: tur bittiyse ya da kullanıcı adımı önceden
+    /// geçmişse <c>done</c>; önceki desteler bittiyse <c>current</c>; yoksa
+    /// <c>upcoming</c>.
+    /// </summary>
+    private static KartyPathStepResponse ArticleStep(
+        PathArticleStep? progress,
+        bool legacyPassed,
+        bool reached)
+    {
+        var done = progress?.Completed == true || legacyPassed;
+        return new KartyPathStepResponse
+        {
+            State = done ? "done" : reached ? "current" : "upcoming",
+            Article = true,
+            NewGoal = ArticleStepRules.RoundGoal,
+            LearnedCount = done
+                ? ArticleStepRules.RoundGoal
+                : Math.Min(progress?.CorrectCount ?? 0, ArticleStepRules.RoundGoal),
+        };
+    }
+
+    /// <summary>
+    /// Artikel adımı gelmeden önce ünitede ilerlemiş kullanıcı (adımın
+    /// sonrasındaki destelerden kelime tanışmış ya da ünitenin bir kelimesi
+    /// pekişmiş) adımı geçmiş sayılır: yolun gerisine döndürülmez.
+    /// </summary>
+    private static bool LegacyPassed(
+        IEnumerable<IReadOnlyList<PathCard>> laterDecks,
+        IReadOnlyList<PathCard> unitCards,
+        IReadOnlyDictionary<int, PathLearning> learningById) =>
+        laterDecks.Any(deck => deck.Any(card => learningById.ContainsKey(card.KartyId))) ||
+        unitCards.Any(card =>
+            learningById.TryGetValue(card.KartyId, out var learning) &&
+            KartyUnitRules.IsConsolidated(learning.ReinforcedAt));
 
     /// <summary>
     /// <c>current</c> adımı taşıyan ünite güncel; öncesindeki açık üniteler
@@ -205,6 +262,9 @@ public sealed record PathCard(
     string Article,
     string KartyUrl,
     string? Meaning = null);
+
+/// <summary>Kullanıcının bir ünitedeki Artikel adımı.</summary>
+public sealed record PathArticleStep(int CorrectCount, bool Completed);
 
 public sealed record PathLearning(
     int KartyId,

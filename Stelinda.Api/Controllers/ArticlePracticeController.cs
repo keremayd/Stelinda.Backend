@@ -25,12 +25,14 @@ public class ArticlePracticeController : ControllerBase
     [HttpGet("next/{userId}")]
     public async Task<ActionResult<ApiResponse<GetArticlePracticeTaskResponse>>> GetNext(
         [FromRoute] string userId,
-        [FromQuery] int? preferredKartyId)
+        [FromQuery] int? preferredKartyId,
+        [FromQuery] int? unit)
     {
         var response = await _mediator.Send(new GetArticlePracticeTaskRequest
         {
             UserId = userId,
             PreferredKartyId = preferredKartyId,
+            Unit = unit,
         });
         if (response.Task is not null)
         {

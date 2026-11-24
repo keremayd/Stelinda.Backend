@@ -85,6 +85,14 @@ public class KartyPathStepResponse
     /// <see cref="Deck"/> null.
     /// </summary>
     public bool Reinforce { get; set; }
+
+    /// <summary>
+    /// Ünitenin Artikel adımı (24 Kas 2026, <c>ArticleStepRules</c>): ünitenin
+    /// ortasında kendi düğümü. <see cref="LearnedCount"/> turda doğru bilinen
+    /// artikel, <see cref="NewGoal"/> turun hedefi; oyunu
+    /// <c>article-practice/next/{userId}?unit=</c> ile açar. <see cref="Deck"/> null.
+    /// </summary>
+    public bool Article { get; set; }
 }
 
 public class KartyPathWordResponse

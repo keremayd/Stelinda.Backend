@@ -46,9 +46,25 @@ public class GetArticlePracticeTaskQueryHandler
             };
         }
 
-        var activeWords = learnedWords
-            .Where(item => item.ArticleCorrectCount < LearningGoal)
-            .ToList();
+        var now = DateTime.UtcNow;
+
+        // Patikanın Artikel adımı: öğrenilmiş bütün kelimeler adaydır, artikel
+        // takvimine göre sıralanır (ArticleStepRules). Yan durakta yalnız
+        // artikeli henüz 5 kez doğru bilinmemişler sorulurdu.
+        ArticleStepProgressResponse? step = null;
+        if (request.Unit is { } sequence &&
+            await ArticleStepProgress.UnitIdAsync(_context, sequence, cancellationToken) is { } unitId)
+        {
+            step = ArticleStepProgress.ToResponse(await ArticleStepProgress.FindAsync(
+                _context, request.UserId, unitId, cancellationToken));
+        }
+        var stepMode = step is not null;
+
+        var activeWords = stepMode
+            ? learnedWords
+            : learnedWords
+                .Where(item => item.ArticleCorrectCount < LearningGoal)
+                .ToList();
         if (activeWords.Count == 0)
         {
             return new GetArticlePracticeTaskResponse
@@ -56,6 +72,7 @@ public class GetArticlePracticeTaskQueryHandler
                 IsUnlocked = true,
                 LearnedWordCount = learnedWords.Count,
                 RequiredWordCount = RequiredWordCount,
+                Step = step,
             };
         }
 
@@ -74,7 +91,7 @@ public class GetArticlePracticeTaskQueryHandler
         var selected = request.PreferredKartyId.HasValue
             ? alternatives.FirstOrDefault(item => item.KartyId == request.PreferredKartyId.Value)
             : null;
-        selected ??= SelectNext(alternatives);
+        selected ??= stepMode ? SelectForStep(alternatives, now) : SelectNext(alternatives);
         selected.ConsecutiveServeCount = 1;
 
         var previewCandidates = activeWords
@@ -82,7 +99,9 @@ public class GetArticlePracticeTaskQueryHandler
             .ToList();
         var preview = previewCandidates.Count == 0
             ? null
-            : SelectNext(previewCandidates);
+            : stepMode
+                ? SelectForStep(previewCandidates, now)
+                : SelectNext(previewCandidates);
 
         selected.LastArticleServedDate = DateTime.UtcNow;
         await _context.SaveChangesAsync(cancellationToken);
@@ -94,7 +113,28 @@ public class GetArticlePracticeTaskQueryHandler
             RequiredWordCount = RequiredWordCount,
             Task = ToTask(selected),
             NextTask = preview is null ? null : ToTask(preview),
+            Step = step,
         };
+    }
+
+    /// <summary>
+    /// Artikel adımının sırası: önce artikel tekrarı vadesi gelenler (en
+    /// zayıf ve en çok yanılınan önce), sonra vadesine en az kalanlar; tur
+    /// hep dolabilsin diye vadesi gelmemişler de sona eklenir.
+    /// </summary>
+    private static UserKartyLearning SelectForStep(
+        IEnumerable<UserKartyLearning> candidates,
+        DateTime utcNow)
+    {
+        return candidates
+            .OrderBy(item => ArticleStepRules.IsDue(item.ArticleDueDate, utcNow) ? 0 : 1)
+            .ThenBy(item => ArticleStepRules.IsDue(item.ArticleDueDate, utcNow)
+                ? DateTime.MinValue
+                : item.ArticleDueDate)
+            .ThenBy(item => item.ArticleCorrectCount)
+            .ThenByDescending(item => item.ArticleAttemptCount - item.ArticleCorrectCount)
+            .ThenBy(_ => Random.Shared.NextDouble())
+            .First();
     }
 
     private static UserKartyLearning SelectNext(IEnumerable<UserKartyLearning> candidates)

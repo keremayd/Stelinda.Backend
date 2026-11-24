@@ -63,6 +63,18 @@ public static class KartyUnitSchemaHelper
                     announced_sequence integer NOT NULL,
                     updated_at timestamp with time zone NOT NULL
                 );
+
+                -- Ünitenin Artikel adımı (24 Kas 2026). Hesap silinince
+                -- AspNetUsers'tan kendiliğinden silinir.
+                CREATE TABLE IF NOT EXISTS user_karty_article_step (
+                    user_id text NOT NULL REFERENCES "AspNetUsers"("Id") ON DELETE CASCADE,
+                    karty_unit_id integer NOT NULL
+                        REFERENCES karty_unit (karty_unit_id) ON DELETE CASCADE,
+                    correct_count integer NOT NULL DEFAULT 0,
+                    completed_at timestamp with time zone NULL,
+                    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+                    PRIMARY KEY (user_id, karty_unit_id)
+                );
                 """,
                 cancellationToken);
 

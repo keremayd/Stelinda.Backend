@@ -8,4 +8,7 @@ public class AnswerArticlePracticeRequest : IRequest<AnswerArticlePracticeRespon
     public string UserId { get; set; } = string.Empty;
     public int KartyId { get; set; }
     public string SelectedArticle { get; set; } = string.Empty;
+
+    /// <summary>Artikel adımının ünitesi (sırası); doğru cevap adımın ilerlemesine sayılır.</summary>
+    public int? Unit { get; set; }
 }

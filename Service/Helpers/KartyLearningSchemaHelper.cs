@@ -119,6 +119,10 @@ public static class KartyLearningSchemaHelper
                 END IF;
             END $$;
 
+            -- Artikelin kendi tekrar takvimi (24 Kas 2026). Boş = vadesi
+            -- gelmiş; doldurma gerekmiyor.
+            ALTER TABLE user_karty_learning
+                ADD COLUMN IF NOT EXISTS article_due_date timestamp with time zone NULL;
             CREATE INDEX IF NOT EXISTS ix_user_karty_learning_due
                 ON user_karty_learning (user_id, due_date);
 

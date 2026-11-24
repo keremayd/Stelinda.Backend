@@ -50,20 +50,35 @@ public class AnswerArticlePracticeCommandHandler
         var selectedArticle = request.SelectedArticle.Trim().ToLowerInvariant();
         var correctArticle = learning.Karty.Article.Trim().ToLowerInvariant();
         var isCorrect = selectedArticle == correctArticle;
+        var now = DateTime.UtcNow;
         learning.ArticleAttemptCount += 1;
 
-        if (isCorrect)
+        // Artikel bilgisi ayrı ilerler, kendi takvimiyle (ArticleStepRules):
+        // doğru vadesi geldiyse aralığı uzatır, yanlış başa döndürür.
+        ArticleStepRules.Record(learning, isCorrect, now);
+        if (isCorrect) learning.LastArticleAnsweredDate = now;
+
+        // Patikanın Artikel adımı: doğru cevap adımın ilerlemesine sayılır.
+        UserKartyArticleStep? step = null;
+        var stepMode = false;
+        if (request.Unit is { } sequence &&
+            await ArticleStepProgress.UnitIdAsync(_context, sequence, cancellationToken) is { } unitId)
         {
-            // Artikel bilgisi ayrı ilerler; Karty zorluk bandına kanıt sayılmaz.
-            learning.ArticleCorrectCount += 1;
-            learning.LastArticleAnsweredDate = DateTime.UtcNow;
+            stepMode = true;
+            step = await ArticleStepProgress.FindAsync(
+                _context, request.UserId, unitId, cancellationToken);
+            if (isCorrect)
+            {
+                step = ArticleStepProgress.CountCorrect(
+                    _context, step, request.UserId, unitId, now);
+            }
         }
 
         // Buraya yalnızca **kabul edilen** bir cevap ulaşıyor (geçersiz ve
         // mükerrer cevaplar yukarıda erken dönüyor). Doğru olması şart değil:
         // Artikel Pusulası'nda cevap vermek de günü "oynandı" yapar.
         await StreakActivityRecorder.MarkPlayedAsync(
-            _context, request.UserId, DateTime.UtcNow, cancellationToken);
+            _context, request.UserId, now, cancellationToken);
 
         await _context.SaveChangesAsync(cancellationToken);
         return new AnswerArticlePracticeResponse
@@ -73,6 +88,7 @@ public class AnswerArticlePracticeCommandHandler
             CorrectArticle = correctArticle,
             ArticleAttemptCount = learning.ArticleAttemptCount,
             ArticleCorrectCount = learning.ArticleCorrectCount,
+            Step = stepMode ? ArticleStepProgress.ToResponse(step) : null,
         };
     }
 }
