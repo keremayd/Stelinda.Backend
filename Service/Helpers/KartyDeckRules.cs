@@ -91,15 +91,16 @@ public static class KartyDeckRules
 }
 
 /// <summary>
-/// Oyunun kimliği: ünitenin sırası, ünite içindeki deste (yalnız tekrar
-/// oyununda null) ve oyunda şimdiye kadar verilen tekrar kartı sayısı.
+/// Oyunun kimliği: ünitenin sırası, ünite içindeki deste (yalnız tekrar ve
+/// pekiştirme oyununda null), oyunda şimdiye kadar verilen tekrar kartı
+/// sayısı ve oyunun ünitenin pekiştirme oyunu olup olmadığı.
 /// </summary>
-public sealed record KartyGameKey(int UnitSequence, int? Deck, int ReviewsServed)
+public sealed record KartyGameKey(int UnitSequence, int? Deck, int ReviewsServed, bool Reinforce = false)
 {
-    public bool IsReviewGame => Deck is null;
+    public bool IsReviewGame => Deck is null && !Reinforce;
 
     public int ReviewQuota => KartyDeckRules.ReviewQuota(deckGame: Deck is not null);
 }
 
-/// <summary>Seçilen kart ve hangi aşamadan geldiği: <c>review</c> · <c>test</c> · <c>new</c> · <c>practice</c>.</summary>
+/// <summary>Seçilen kart ve hangi aşamadan geldiği: <c>review</c> · <c>test</c> · <c>new</c> · <c>practice</c> · <c>reinforce</c>.</summary>
 public sealed record KartyPick(int? KartyId, string Stage);

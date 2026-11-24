@@ -71,7 +71,7 @@ public class UpdateScoreCommandHandler : IRequestHandler<UpdateScoreRequest, Upd
         // geriye gittim" en demoralize edici geri bildirim.
         //
         // Rastgele oynayıp puan biriktirme riski bilet ekonomisiyle sınırlanır:
-        // giriş 1 bilet + her yanlış 1 bilet, tavan 15.
+        // oyuna giriş 1 bilet (LivesRules).
         //
         // Boost çarpanı **burada** anlamını buluyor: lig bir rekabet ölçüsü,
         // yani hızlanmanın karşılığının görüldüğü yer.
@@ -89,7 +89,8 @@ public class UpdateScoreCommandHandler : IRequestHandler<UpdateScoreRequest, Upd
                 _context,
                 request.UserId,
                 request.KartyId.Value,
-                cancellationToken);
+                cancellationToken,
+                reinforce: request.Reinforce);
             becameConsolidated = record.BecameConsolidated;
         }
 

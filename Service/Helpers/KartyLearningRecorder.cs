@@ -5,9 +5,10 @@ using Postgres.Models;
 namespace Service.Helpers;
 
 /// <summary>
-/// Doğru cevabın kaydı ve bu cevapla kelimenin pekişip pekişmediği
-/// (kutu <see cref="KartyUnitRules.ConsolidatedBox"/> eşiğini geçti mi).
-/// Pekişme, bir ünitenin hedefe ulaşabileceği tek an.
+/// Doğru cevabın kaydı ve bu cevapla kelimenin pekişip pekişmediği. Kelime
+/// yalnız ünitenin pekiştirme oyununda doğru bilinince pekişir
+/// (<see cref="UserKartyLearning.ReinforcedAt"/>); pekişme, bir ünitenin
+/// hedefe ulaşabileceği tek an.
 /// </summary>
 public sealed record KartyLearningRecord(UserKartyLearning Learning, bool BecameConsolidated);
 
@@ -17,7 +18,8 @@ public static class KartyLearningRecorder
         StelindaContext context,
         string userId,
         int kartyId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool reinforce = false)
     {
         var learning = await context.UserKartyLearnings
             .FirstOrDefaultAsync(
@@ -35,12 +37,14 @@ public static class KartyLearningRecorder
                 DueDate = KartyLeitner.NextDue(1, now),
                 FirstLearnedDate = now,
                 LastCorrectDate = now,
+                ReinforcedAt = reinforce ? now : null,
             };
             context.UserKartyLearnings.Add(learning);
-            return new KartyLearningRecord(learning, false);
+            return new KartyLearningRecord(learning, reinforce);
         }
 
-        var wasConsolidated = KartyUnitRules.IsConsolidated(learning.Box);
+        var wasConsolidated = KartyUnitRules.IsConsolidated(learning.ReinforcedAt);
+        if (reinforce && !wasConsolidated) learning.ReinforcedAt = now;
         learning.CorrectCount += 1;
         learning.LastCorrectDate = now;
 
@@ -56,6 +60,6 @@ public static class KartyLearningRecorder
 
         return new KartyLearningRecord(
             learning,
-            !wasConsolidated && KartyUnitRules.IsConsolidated(learning.Box));
+            !wasConsolidated && KartyUnitRules.IsConsolidated(learning.ReinforcedAt));
     }
 }

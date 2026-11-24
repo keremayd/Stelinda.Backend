@@ -62,6 +62,14 @@ public class UserKartyLearning
     [Column("last_article_answered_date")]
     public DateTime? LastArticleAnsweredDate { get; set; }
 
+    /// <summary>
+    /// Kelimenin pekiştiği an: ünitenin pekiştirme oyununda doğru bilindi
+    /// (24 Kas 2026). Ünite kapısı bunu sayar; boşsa pekişmedi. Bir kez
+    /// dolunca geri alınmaz, yani açılan ünite bir daha kilitlenmez.
+    /// </summary>
+    [Column("reinforced_at")]
+    public DateTime? ReinforcedAt { get; set; }
+
     public User? User { get; set; }
     public Karty? Karty { get; set; }
 }

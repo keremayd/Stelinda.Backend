@@ -24,5 +24,11 @@ public class UpdateScoreRequest: IRequest<UpdateScoreResponse>
     /// </summary>
     public bool BoostActive { get; set; }
 
+    /// <summary>
+    /// Cevap ünitenin pekiştirme oyununda verildi: doğruysa kelime pekişir
+    /// (<c>reinforced_at</c>), ünite hedefe yaklaşır. Eski istemci göndermez.
+    /// </summary>
+    public bool Reinforce { get; set; }
+
     public int? KartyId { get; set; }
 }

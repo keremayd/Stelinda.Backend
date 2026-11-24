@@ -186,7 +186,8 @@ public class UserController : ControllerBase
             UserId = request.UserId,
             Point = request.Point,
             BoostActive = request.BoostActive,
-            KartyId = request.KartyId
+            KartyId = request.KartyId,
+            Reinforce = request.Reinforce
         });
 
         // Yanlış cevap Rövanş'a düşer ve kutuyu sıfırlar, bilet yakmaz: bedel

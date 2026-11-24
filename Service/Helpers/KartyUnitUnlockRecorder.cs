@@ -7,7 +7,7 @@ namespace Service.Helpers;
 /// <summary>
 /// Ünitenin açıldığı anı kaydeder (<see cref="UserKartyUnitState"/>).
 ///
-/// Bir kelime pekiştiğinde (kutu 1 → 2) çağrılır; bir ünite yalnız o an
+/// Bir kelime pekiştiğinde (pekiştirme oyununda doğru bilindi) çağrılır; bir ünite yalnız o an
 /// hedefe ulaşabilir. Kaydedilen ünite bir daha kilitlenmez ve patika onu
 /// bir kez kutlar. Kural <see cref="KartyUnitRules.NewlyUnlocked"/> içinde.
 /// </summary>

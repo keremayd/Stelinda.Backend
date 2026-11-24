@@ -75,7 +75,7 @@ public class GetKartySessionStatusQueryHandler
         var learnings = await _context.UserKartyLearnings
             .AsNoTracking()
             .Where(learning => learning.UserId == request.UserId && ids.Contains(learning.KartyId))
-            .Select(learning => new { learning.KartyId, learning.Box, learning.DueDate })
+            .Select(learning => new { learning.KartyId, learning.Box, learning.DueDate, learning.ReinforcedAt })
             .ToDictionaryAsync(learning => learning.KartyId, cancellationToken);
 
         var deck = request.Deck is int number && number > 0
@@ -108,11 +108,13 @@ public class GetKartySessionStatusQueryHandler
                         Box = learning?.Box ?? 0,
                         IsDue = learning is not null &&
                                 KartyLeitner.IsDueForReview(learning.Box, learning.DueDate, now),
+                        Reinforced = learning is not null &&
+                                     KartyUnitRules.IsConsolidated(learning.ReinforcedAt),
                     };
                 })
                 .ToList(),
             UnitConsolidated = learnings.Values.Count(learning =>
-                KartyUnitRules.IsConsolidated(learning.Box)),
+                KartyUnitRules.IsConsolidated(learning.ReinforcedAt)),
             UnitWordCount = unitCards.Count,
         };
     }

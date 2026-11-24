@@ -76,7 +76,8 @@ public class GetKartyPathQueryHandler
                 learning.Box,
                 learning.DueDate,
                 learning.IntroducedDate,
-                learning.FirstLearnedDate))
+                learning.FirstLearnedDate,
+                learning.ReinforcedAt))
             .ToListAsync(cancellationToken);
 
         var unitState = await _context.UserKartyUnitStates

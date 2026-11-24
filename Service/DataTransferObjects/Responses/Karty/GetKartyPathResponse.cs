@@ -77,6 +77,14 @@ public class KartyPathStepResponse
 
     /// <summary>Destenin henüz tanışılmamış kelimelerinin görselleri; istemci silüet çizer.</summary>
     public List<string> UpcomingImageUrls { get; set; } = new();
+
+    /// <summary>
+    /// Ünitenin pekiştirme adımı (24 Kas 2026): desteler bitti, ünite hedefe
+    /// ulaşmadı. İstemci ayrı bir düğüm çizmez, ünitenin pekiştirme kapısı şu
+    /// anki düğüm olur; oyunu <c>karty/random?reinforce=true</c> ile açar.
+    /// <see cref="Deck"/> null.
+    /// </summary>
+    public bool Reinforce { get; set; }
 }
 
 public class KartyPathWordResponse
@@ -93,4 +101,7 @@ public class KartyPathWordResponse
     public string? Meaning { get; set; }
     public int Box { get; set; }
     public bool IsDue { get; set; }
+
+    /// <summary>Kelime pekişti mi (ünitenin pekiştirme oyununda doğru bilindi).</summary>
+    public bool Reinforced { get; set; }
 }

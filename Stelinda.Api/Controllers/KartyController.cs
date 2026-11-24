@@ -50,7 +50,8 @@ public class KartyController : ControllerBase
         [FromRoute] string userId,
         [FromQuery] int? unit,
         [FromQuery] int? deck,
-        [FromQuery] int? reviews)
+        [FromQuery] int? reviews,
+        [FromQuery] bool reinforce = false)
     {
         var kartyQuestion = await _mediator.Send(new GetKartyByScoreRequest()
         {
@@ -58,6 +59,7 @@ public class KartyController : ControllerBase
             UnitSequence = unit,
             Deck = deck,
             Reviews = reviews,
+            Reinforce = reinforce,
             Locale = Request.NativeLanguage(),
         });
 

@@ -18,13 +18,14 @@ public static class KartyUnitRules
     public const double UnlockRatio = 0.8;
 
     /// <summary>
-    /// Pekişti sayılan en düşük kutu: kelime bir kez ilk testte, bir kez de
-    /// vadesinde (ertesi gün) doğru bilinmiş. Kutu 1 yalnız "bir kez bildi"
-    /// demek ve aynı gün tahminle de gelebiliyor.
+    /// Kelime pekişti mi: ünitenin pekiştirme oyununda doğru bilindi
+    /// (<c>reinforced_at</c>, 24 Kas 2026, kullanıcı kararı). Eskiden kutu 2
+    /// sayılıyordu, yani kelime ancak ertesi gün vadesinde doğru bilinince
+    /// pekişiyordu; istekli kullanıcı yeni üniteyi aynı gün açamıyordu. Hızı
+    /// artık bilet belirliyor. Aralıklı tekrar sürüyor: kutu ve vade
+    /// tekrarların ne zaman geleceğini belirler, kilidi değil.
     /// </summary>
-    public const int ConsolidatedBox = 2;
-
-    public static bool IsConsolidated(int box) => box >= ConsolidatedBox;
+    public static bool IsConsolidated(DateTime? reinforcedAt) => reinforcedAt is not null;
 
     /// <summary>Hedef kelime sayısı: 40 kelimelik ünitede 32.</summary>
     public static int RequiredConsolidated(int wordCount) =>
@@ -103,5 +104,5 @@ public static class KartyUnitRules
 /// <summary>Bir kullanıcının bir ünitedeki durumu.</summary>
 /// <param name="WordCount">Ünitedeki kart sayısı.</param>
 /// <param name="SeenCount">Öğrenme kaydı açılmış (tanışılmış) kart sayısı.</param>
-/// <param name="ConsolidatedCount">Kutusu <see cref="KartyUnitRules.ConsolidatedBox"/> ve üstü olan kart sayısı.</param>
+/// <param name="ConsolidatedCount">Pekiştirme oyununda doğru bilinmiş (pekişmiş) kart sayısı.</param>
 public readonly record struct UnitProgress(int WordCount, int SeenCount, int ConsolidatedCount);

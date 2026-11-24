@@ -20,9 +20,13 @@ namespace Service.Helpers;
 /// kilitli ünite              → locked
 /// </code>
 ///
-/// Açık ünitelerde bitmemiş deste kalmadıysa (ünite kapısı kapalı ya da
-/// içerik bitti) son açık ünitenin sonuna yalnız tekrardan oluşan bir
-/// <c>current</c> adım eklenir: DEVAM her zaman bir yere bağlı kalır.
+/// Bir açık ünitenin desteleri bittiyse ve ünite hedefe ulaşmadıysa
+/// (pekişen kelime %80'in altında) şu anki adım o ünitenin **pekiştirme**
+/// adımıdır (<see cref="KartyPathStepResponse.Reinforce"/>, 24 Kas 2026):
+/// sonraki ünite zaten kilitli olduğu için yol orada durur.
+/// Açık ünitelerde ne bitmemiş deste ne pekiştirme kaldıysa (içerik bitti)
+/// son açık ünitenin sonuna yalnız tekrardan oluşan bir <c>current</c> adım
+/// eklenir: DEVAM her zaman bir yere bağlı kalır.
 /// Vadesi gelmiş tekrarlar bütün ünitelerden sayılır; <c>current</c> adıma
 /// oyunun soracağı kadarı yazılır (<see cref="KartyDeckRules.ReviewQuota"/>),
 /// tekrarlar yeni kelimelerle karışık gelir, kalanı sonraki oyunlara kalır.
@@ -53,7 +57,7 @@ public static class KartyPathBuilder
                 return new UnitProgress(
                     unitCards.Count,
                     seen.Count,
-                    seen.Count(card => KartyUnitRules.IsConsolidated(learningById[card.KartyId].Box)));
+                    seen.Count(card => KartyUnitRules.IsConsolidated(learningById[card.KartyId].ReinforcedAt)));
             })
             .ToList();
         // Kelime seçiciyle aynı kural ve aynı kayıt: "hangi ünite açık" iki
@@ -130,6 +134,14 @@ public static class KartyPathBuilder
                 if (state == "current") current = step;
                 unitResponse.Steps.Add(step);
             }
+
+            // Desteler bitti, ünite hedefe ulaşmadı: sıradaki iş pekiştirme.
+            if (unlocked[i] && current is null && unitCards.Count > 0 &&
+                !KartyUnitRules.HasReachedGoal(progress[i]))
+            {
+                current = new KartyPathStepResponse { State = "current", Reinforce = true };
+                unitResponse.Steps.Add(current);
+            }
         }
 
         if (current is null)
@@ -142,7 +154,7 @@ public static class KartyPathBuilder
                 host.Steps.Add(current);
             }
         }
-        if (current is not null)
+        if (current is not null && !current.Reinforce)
         {
             current.ReviewCount = Math.Min(
                 reviews,
@@ -179,6 +191,7 @@ public static class KartyPathBuilder
             Meaning = card.Meaning,
             Box = learning.Box,
             IsDue = KartyLeitner.IsDueForReview(learning.Box, learning.DueDate, utcNow),
+            Reinforced = KartyUnitRules.IsConsolidated(learning.ReinforcedAt),
         };
 }
 
@@ -198,4 +211,5 @@ public sealed record PathLearning(
     int Box,
     DateTime? DueDate,
     DateTime? IntroducedDate,
-    DateTime FirstLearnedDate);
+    DateTime FirstLearnedDate,
+    DateTime? ReinforcedAt = null);

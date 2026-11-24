@@ -101,6 +101,24 @@ public static class KartyLearningSchemaHelper
                     END)
             WHERE due_date IS NULL AND box > 0;
 
+            -- Pekişme (24 Kas 2026): kelime ünitenin pekiştirme oyununda doğru
+            -- bilinince pekişir; eskiden kutu 2 (ertesi günkü doğru) sayılıyordu.
+            -- Sütun ilk kez eklenirken eski kuralla pekişmiş kelimeler pekişmiş
+            -- sayılır, kimsenin ilerlemesi kaybolmasın. Doldurma yalnız bir kez.
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'user_karty_learning' AND column_name = 'reinforced_at'
+                ) THEN
+                    ALTER TABLE user_karty_learning
+                        ADD COLUMN reinforced_at timestamp with time zone NULL;
+                    UPDATE user_karty_learning
+                    SET reinforced_at = last_correct_date
+                    WHERE box >= 2;
+                END IF;
+            END $$;
+
             CREATE INDEX IF NOT EXISTS ix_user_karty_learning_due
                 ON user_karty_learning (user_id, due_date);
 

@@ -24,6 +24,12 @@ public class GetKartyByScoreRequest : IRequest<GetKartyByScoreResponse>
     /// <summary>Oyunda şimdiye kadar verilen tekrar kartı sayısı (payı ölçmek için).</summary>
     public int? Reviews { get; set; }
 
+    /// <summary>
+    /// Ünitenin pekiştirme oyunu: kart ünitenin henüz pekişmemiş
+    /// kelimelerinden gelir (<c>KartyScheduler</c>). Deste verilmez.
+    /// </summary>
+    public bool Reinforce { get; set; }
+
     /// <summary>Kullanıcının ana dili (<c>LocaleRules</c>); anlam ve ünite adı bu dilde döner.</summary>
     public string Locale { get; set; } = Service.Helpers.LocaleRules.Default;
 }

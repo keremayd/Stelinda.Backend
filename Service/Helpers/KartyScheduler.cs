@@ -103,6 +103,15 @@ public static class KartyScheduler
             .Where(learning => learning.UserId == userId);
         var seenKartyIds = learnings.Select(learning => learning.KartyId);
 
+        // 0 — Pekiştirme oyunu: ünitenin pekişmemiş kelimeleri. Tekrar ve
+        // yeni kelime bu oyunda gelmez; oyun 8 cevaplık bir turdur.
+        if (game?.Reinforce == true)
+        {
+            var reinforcePick = await ReinforcePickAsync(
+                context, userId, game.UnitSequence, cancellationToken);
+            if (reinforcePick is not null) return reinforcePick;
+        }
+
         // Vadesi gelmiş tekrarlar. En geç kalmışlar önce gelsin ki borç
         // birikmesin; seçim o pencere içinden rastgele.
         var dueIds = await learnings
@@ -221,6 +230,49 @@ public static class KartyScheduler
             .Select(karty => (int?)karty.KartyId)
             .FirstOrDefaultAsync(cancellationToken);
         return new KartyPick(any, "new");
+    }
+
+    /// <summary>
+    /// Pekiştirme oyununun kartı: ünitenin tanışılmış ama pekişmemiş
+    /// kelimelerinden rastgele (aşama <c>reinforce</c>). Doğru bilinen kelime
+    /// pekişir ve adaylardan çıkar, yanlış bilinen kalır. Son kelimelerde aday
+    /// azalınca ünitenin pekişmiş kelimeleri pratik olarak karışır ki
+    /// istemcinin destesi kurumasın (<see cref="CandidateFloor"/>). Ünitede
+    /// tanışılmış kelime yoksa <c>null</c>: olağan akış sürer.
+    /// </summary>
+    private static async Task<KartyPick?> ReinforcePickAsync(
+        StelindaContext context,
+        string userId,
+        int unitSequence,
+        CancellationToken cancellationToken)
+    {
+        var unitId = await context.KartyUnits
+            .AsNoTracking()
+            .Where(unit => unit.Sequence == unitSequence)
+            .Select(unit => (int?)unit.KartyUnitId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (unitId is null) return null;
+
+        var rows = await (
+                from learning in context.UserKartyLearnings.AsNoTracking()
+                join karty in context.Karty.AsNoTracking() on learning.KartyId equals karty.KartyId
+                where learning.UserId == userId && karty.UnitId == unitId
+                select new { learning.KartyId, learning.ReinforcedAt })
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0) return null;
+
+        var open = rows.Where(row => row.ReinforcedAt == null).Select(row => row.KartyId).ToList();
+        if (open.Count >= CandidateFloor) return new KartyPick(PickRandom(open), "reinforce");
+
+        var mix = open
+            .Concat(rows
+                .Where(row => row.ReinforcedAt != null)
+                .Select(row => row.KartyId)
+                .OrderBy(_ => Random.Shared.Next())
+                .Take(CandidateFloor - open.Count))
+            .ToList();
+        var pick = PickRandom(mix);
+        return new KartyPick(pick, open.Contains(pick) ? "reinforce" : "practice");
     }
 
     /// <summary>Oyunun destesi: kaç kelimesiyle tanışıldı, hangileri görülmedi.</summary>

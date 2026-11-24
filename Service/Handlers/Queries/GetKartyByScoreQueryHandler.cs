@@ -33,8 +33,9 @@ public class GetKartyByScoreQueryHandler : IRequestHandler<GetKartyByScoreReques
         var game = request.UnitSequence is int unit
             ? new KartyGameKey(
                 unit,
-                request.Deck is int deck && deck > 0 ? deck : null,
-                Math.Max(0, request.Reviews ?? 0))
+                request.Deck is int deck && deck > 0 && !request.Reinforce ? deck : null,
+                Math.Max(0, request.Reviews ?? 0),
+                request.Reinforce)
             : null;
         var pick = await KartyScheduler.SelectAsync(
             _context, request.UserId, DateTime.UtcNow, game, cancellationToken);

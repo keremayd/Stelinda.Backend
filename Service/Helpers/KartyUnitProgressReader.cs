@@ -41,8 +41,7 @@ public static class KartyUnitProgressReader
                 {
                     UnitId = byUnit.Key,
                     Seen = byUnit.Count(),
-                    Consolidated = byUnit.Count(
-                        item => item.Box >= KartyUnitRules.ConsolidatedBox),
+                    Consolidated = byUnit.Count(item => item.ReinforcedAt != null),
                 })
             .ToDictionaryAsync(item => item.UnitId, cancellationToken);
 
