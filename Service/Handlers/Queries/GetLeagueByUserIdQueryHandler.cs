@@ -86,6 +86,7 @@ public class GetLeagueByUserIdQueryHandler : IRequestHandler<GetLeagueByUserIdRe
         new Dictionary<string, string>
         {
             ["tr"] = "Gökyüzü Gezgini",
+            ["en"] = "Sky Traveler",
             ["sq"] = "Udhëtar i Qiellit",
         };
 

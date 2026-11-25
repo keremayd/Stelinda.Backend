@@ -3,7 +3,8 @@ namespace Service.Helpers;
 /// <summary>
 /// Kullanıcının ana dili: arayüzün, ünite adlarının ve kart anlamlarının
 /// dili. Öğrenilen dil her zaman Almanca; değişen, kelimenin hangi dilde
-/// açıklandığı (16 Kas 2026: Türkçe ve Arnavutça).
+/// açıklandığı (16 Kas 2026: Türkçe ve Arnavutça; 25 Kas 2026: İngilizce,
+/// telefonu İngilizce olan Türkiye kullanıcıları için).
 ///
 /// İstemci dili her istekte <c>Accept-Language</c> başlığıyla bildirir.
 /// Başlığı göndermeyen eski sürüm varsayılan dili (Türkçe) alır; yani mevcut
@@ -26,7 +27,7 @@ public static class LocaleRules
     public const string Default = "tr";
 
     /// <summary>Desteklenen ana diller (ISO 639-1). Yeni dil buraya eklenir.</summary>
-    public static readonly IReadOnlyList<string> Supported = new[] { "tr", "sq" };
+    public static readonly IReadOnlyList<string> Supported = new[] { "tr", "en", "sq" };
 
     /// <summary>
     /// Desteklenen dil kodu ("sq", "SQ", "sq-XK", "sq_AL" → "sq"); değilse
