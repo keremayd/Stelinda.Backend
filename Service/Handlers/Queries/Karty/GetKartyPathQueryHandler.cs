@@ -77,28 +77,20 @@ public class GetKartyPathQueryHandler
                 learning.DueDate,
                 learning.IntroducedDate,
                 learning.FirstLearnedDate,
-                learning.ReinforcedAt))
+                learning.ReinforcedAt,
+                learning.LastArticleAnsweredDate))
             .ToListAsync(cancellationToken);
 
         var unitState = await _context.UserKartyUnitStates
             .AsNoTracking()
             .FirstOrDefaultAsync(state => state.UserId == request.UserId, cancellationToken);
 
-        var articleSteps = await _context.UserKartyArticleSteps
-            .AsNoTracking()
-            .Where(step => step.UserId == request.UserId)
-            .ToDictionaryAsync(
-                step => step.KartyUnitId,
-                step => new PathArticleStep(step.CorrectCount, step.CompletedAt != null),
-                cancellationToken);
-
         var response = KartyPathBuilder.Build(
             units,
             cards,
             learnings,
             DateTime.UtcNow,
-            unitState?.UnlockedSequence ?? 0,
-            articleSteps);
+            unitState?.UnlockedSequence ?? 0);
 
         if (unitState is not null &&
             unitState.UnlockedSequence > unitState.AnnouncedSequence &&

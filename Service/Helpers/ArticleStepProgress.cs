@@ -1,61 +1,53 @@
 using Microsoft.EntityFrameworkCore;
 using Postgres;
-using Postgres.Models;
 using Service.DataTransferObjects.Responses.ArticlePractice;
 
 namespace Service.Helpers;
 
-/// <summary>Artikel adımının ilerlemesini okur ve doğru cevabı işler.</summary>
+/// <summary>Artikel adımının kelimelerini ve ilerlemesini okur (<see cref="ArticleStepRules"/>).</summary>
 public static class ArticleStepProgress
 {
-    /// <summary>Ünite sırasından ünitenin kimliği; yoksa null.</summary>
-    public static Task<int?> UnitIdAsync(
+    /// <summary>Ünitenin (sırasıyla) Artikel adımında sorulan kelimeleri; ünite yoksa null.</summary>
+    public static async Task<IReadOnlyList<int>?> StepWordIdsAsync(
         StelindaContext context,
         int sequence,
-        CancellationToken cancellationToken) =>
-        context.KartyUnits
+        CancellationToken cancellationToken)
+    {
+        var unitId = await context.KartyUnits
             .AsNoTracking()
             .Where(unit => unit.Sequence == sequence)
             .Select(unit => (int?)unit.KartyUnitId)
             .FirstOrDefaultAsync(cancellationToken);
+        if (unitId is null) return null;
 
-    public static Task<UserKartyArticleStep?> FindAsync(
-        StelindaContext context,
-        string userId,
-        int unitId,
-        CancellationToken cancellationToken) =>
-        context.UserKartyArticleSteps.FirstOrDefaultAsync(
-            step => step.UserId == userId && step.KartyUnitId == unitId,
-            cancellationToken);
-
-    /// <summary>
-    /// Doğru cevabı adıma sayar; hedefe varınca adım biter. Bitmiş adımda
-    /// tur pratik olarak sürer, sayı artmaz.
-    /// </summary>
-    public static UserKartyArticleStep CountCorrect(
-        StelindaContext context,
-        UserKartyArticleStep? step,
-        string userId,
-        int unitId,
-        DateTime utcNow)
-    {
-        if (step is null)
-        {
-            step = new UserKartyArticleStep { UserId = userId, KartyUnitId = unitId };
-            context.UserKartyArticleSteps.Add(step);
-        }
-        if (step.CompletedAt is not null) return step;
-
-        step.CorrectCount = Math.Min(step.CorrectCount + 1, ArticleStepRules.RoundGoal);
-        step.UpdatedAt = utcNow;
-        if (step.CorrectCount >= ArticleStepRules.RoundGoal) step.CompletedAt = utcNow;
-        return step;
+        var ordered = await context.Karty
+            .AsNoTracking()
+            .Where(karty => karty.UnitId == unitId)
+            .OrderBy(karty => karty.UnitOrder ?? int.MaxValue)
+            .ThenBy(karty => karty.KartyId)
+            .Select(karty => karty.KartyId)
+            .ToListAsync(cancellationToken);
+        return ArticleStepRules.StepWords(ordered);
     }
 
-    public static ArticleStepProgressResponse ToResponse(UserKartyArticleStep? step) => new()
+    /// <summary>Adımın kelimelerinden artikeli en az bir kez doğru bilinenler.</summary>
+    public static Task<int> AnsweredCountAsync(
+        StelindaContext context,
+        string userId,
+        IReadOnlyList<int> stepWordIds,
+        CancellationToken cancellationToken) =>
+        context.UserKartyLearnings
+            .AsNoTracking()
+            .CountAsync(
+                learning => learning.UserId == userId &&
+                            stepWordIds.Contains(learning.KartyId) &&
+                            learning.LastArticleAnsweredDate != null,
+                cancellationToken);
+
+    public static ArticleStepProgressResponse ToResponse(int answered, int goal) => new()
     {
-        CorrectCount = step?.CorrectCount ?? 0,
-        Goal = ArticleStepRules.RoundGoal,
-        Completed = step?.CompletedAt is not null,
+        CorrectCount = Math.Min(answered, goal),
+        Goal = goal,
+        Completed = goal > 0 && answered >= goal,
     };
 }

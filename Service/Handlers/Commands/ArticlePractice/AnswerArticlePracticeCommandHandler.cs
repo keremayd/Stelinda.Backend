@@ -58,22 +58,6 @@ public class AnswerArticlePracticeCommandHandler
         ArticleStepRules.Record(learning, isCorrect, now);
         if (isCorrect) learning.LastArticleAnsweredDate = now;
 
-        // Patikanın Artikel adımı: doğru cevap adımın ilerlemesine sayılır.
-        UserKartyArticleStep? step = null;
-        var stepMode = false;
-        if (request.Unit is { } sequence &&
-            await ArticleStepProgress.UnitIdAsync(_context, sequence, cancellationToken) is { } unitId)
-        {
-            stepMode = true;
-            step = await ArticleStepProgress.FindAsync(
-                _context, request.UserId, unitId, cancellationToken);
-            if (isCorrect)
-            {
-                step = ArticleStepProgress.CountCorrect(
-                    _context, step, request.UserId, unitId, now);
-            }
-        }
-
         // Buraya yalnızca **kabul edilen** bir cevap ulaşıyor (geçersiz ve
         // mükerrer cevaplar yukarıda erken dönüyor). Doğru olması şart değil:
         // Artikel Pusulası'nda cevap vermek de günü "oynandı" yapar.
@@ -81,6 +65,18 @@ public class AnswerArticlePracticeCommandHandler
             _context, request.UserId, now, cancellationToken);
 
         await _context.SaveChangesAsync(cancellationToken);
+
+        // Patikanın Artikel adımı: ilerleme türetilir (adımın kelimelerinden
+        // artikeli en az bir kez doğru bilinenler, ArticleStepRules).
+        ArticleStepProgressResponse? step = null;
+        if (request.Unit is { } sequence &&
+            await ArticleStepProgress.StepWordIdsAsync(_context, sequence, cancellationToken) is { } stepWordIds)
+        {
+            var answered = await ArticleStepProgress.AnsweredCountAsync(
+                _context, request.UserId, stepWordIds, cancellationToken);
+            step = ArticleStepProgress.ToResponse(answered, stepWordIds.Count);
+        }
+
         return new AnswerArticlePracticeResponse
         {
             IsAccepted = true,
@@ -88,7 +84,7 @@ public class AnswerArticlePracticeCommandHandler
             CorrectArticle = correctArticle,
             ArticleAttemptCount = learning.ArticleAttemptCount,
             ArticleCorrectCount = learning.ArticleCorrectCount,
-            Step = stepMode ? ArticleStepProgress.ToResponse(step) : null,
+            Step = step,
         };
     }
 }

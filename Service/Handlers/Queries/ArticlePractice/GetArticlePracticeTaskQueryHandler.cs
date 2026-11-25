@@ -48,23 +48,47 @@ public class GetArticlePracticeTaskQueryHandler
 
         var now = DateTime.UtcNow;
 
-        // Patikanın Artikel adımı: öğrenilmiş bütün kelimeler adaydır, artikel
-        // takvimine göre sıralanır (ArticleStepRules). Yan durakta yalnız
-        // artikeli henüz 5 kez doğru bilinmemişler sorulurdu.
+        // Patikanın Artikel adımı (ArticleStepRules): ünitenin adımdan önceki
+        // kelimelerinin hepsi; araya önceki ünitelerden vadesi gelmiş, en çok
+        // yanılınan bir tekrar. Yan durakta (ünitesiz istek) yalnız artikeli
+        // henüz 5 kez doğru bilinmemişler sorulurdu.
         ArticleStepProgressResponse? step = null;
+        List<UserKartyLearning>? stepPool = null;
         if (request.Unit is { } sequence &&
-            await ArticleStepProgress.UnitIdAsync(_context, sequence, cancellationToken) is { } unitId)
+            await ArticleStepProgress.StepWordIdsAsync(_context, sequence, cancellationToken) is { } stepWordIds)
         {
-            step = ArticleStepProgress.ToResponse(await ArticleStepProgress.FindAsync(
-                _context, request.UserId, unitId, cancellationToken));
-        }
-        var stepMode = step is not null;
-
-        var activeWords = stepMode
-            ? learnedWords
-            : learnedWords
-                .Where(item => item.ArticleCorrectCount < LearningGoal)
+            var stepSet = stepWordIds.ToHashSet();
+            var stepWords = learnedWords.Where(item => stepSet.Contains(item.KartyId)).ToList();
+            var pending = stepWords
+                .Where(item => !ArticleStepRules.IsAnswered(item.LastArticleAnsweredDate))
                 .ToList();
+            var reviews = learnedWords
+                .Where(item => !stepSet.Contains(item.KartyId) &&
+                               ArticleStepRules.IsDue(item.ArticleDueDate, now))
+                .ToList();
+            var answered = stepWordIds.Count - pending.Count;
+            step = ArticleStepProgress.ToResponse(answered, stepWordIds.Count);
+
+            var last = learnedWords
+                .Where(item => item.LastArticleServedDate.HasValue)
+                .OrderByDescending(item => item.LastArticleServedDate)
+                .FirstOrDefault();
+            var reviewTurn = pending.Count > 0 && ArticleStepRules.IsReviewTurn(
+                answered,
+                lastWasStepWord: last is null || stepSet.Contains(last.KartyId),
+                hasReviews: reviews.Count > 0);
+            stepPool = reviewTurn
+                ? reviews
+                : pending.Count > 0
+                    ? pending
+                    : reviews.Count > 0 ? reviews : learnedWords;
+        }
+        var stepMode = stepPool is not null;
+
+        var activeWords = stepPool ??
+                          learnedWords
+                              .Where(item => item.ArticleCorrectCount < LearningGoal)
+                              .ToList();
         if (activeWords.Count == 0)
         {
             return new GetArticlePracticeTaskResponse
@@ -76,7 +100,7 @@ public class GetArticlePracticeTaskQueryHandler
             };
         }
 
-        var lastServed = activeWords
+        var lastServed = learnedWords
             .Where(item => item.LastArticleServedDate.HasValue)
             .OrderByDescending(item => item.LastArticleServedDate)
             .FirstOrDefault();
@@ -117,10 +141,18 @@ public class GetArticlePracticeTaskQueryHandler
         };
     }
 
+    private static UserKartyLearning SelectNext(IEnumerable<UserKartyLearning> candidates)
+    {
+        return candidates
+            .OrderBy(item => Math.Min(item.ArticleCorrectCount, LearningGoal))
+            .ThenByDescending(item => item.ArticleAttemptCount - item.ArticleCorrectCount)
+            .ThenBy(_ => Random.Shared.NextDouble())
+            .First();
+    }
+
     /// <summary>
-    /// Artikel adımının sırası: önce artikel tekrarı vadesi gelenler (en
-    /// zayıf ve en çok yanılınan önce), sonra vadesine en az kalanlar; tur
-    /// hep dolabilsin diye vadesi gelmemişler de sona eklenir.
+    /// Artikel adımında havuzdan sıradaki: en çok yanılınan önce, sonra
+    /// artikeli en az doğru bilinen, eşitlikte rastgele.
     /// </summary>
     private static UserKartyLearning SelectForStep(
         IEnumerable<UserKartyLearning> candidates,
@@ -128,20 +160,8 @@ public class GetArticlePracticeTaskQueryHandler
     {
         return candidates
             .OrderBy(item => ArticleStepRules.IsDue(item.ArticleDueDate, utcNow) ? 0 : 1)
-            .ThenBy(item => ArticleStepRules.IsDue(item.ArticleDueDate, utcNow)
-                ? DateTime.MinValue
-                : item.ArticleDueDate)
+            .ThenByDescending(item => item.ArticleAttemptCount - item.ArticleCorrectCount)
             .ThenBy(item => item.ArticleCorrectCount)
-            .ThenByDescending(item => item.ArticleAttemptCount - item.ArticleCorrectCount)
-            .ThenBy(_ => Random.Shared.NextDouble())
-            .First();
-    }
-
-    private static UserKartyLearning SelectNext(IEnumerable<UserKartyLearning> candidates)
-    {
-        return candidates
-            .OrderBy(item => Math.Min(item.ArticleCorrectCount, LearningGoal))
-            .ThenByDescending(item => item.ArticleAttemptCount - item.ArticleCorrectCount)
             .ThenBy(_ => Random.Shared.NextDouble())
             .First();
     }

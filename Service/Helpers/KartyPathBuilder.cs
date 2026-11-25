@@ -38,8 +38,7 @@ public static class KartyPathBuilder
         IReadOnlyList<PathCard> cards,
         IReadOnlyList<PathLearning> learnings,
         DateTime utcNow,
-        int recordedUnlockSequence = 0,
-        IReadOnlyDictionary<int, PathArticleStep>? articleSteps = null)
+        int recordedUnlockSequence = 0)
     {
         var learningById = learnings.ToDictionary(item => item.KartyId);
         var cardsByUnit = units.ToDictionary(
@@ -112,7 +111,7 @@ public static class KartyPathBuilder
                         {
                             State = "locked",
                             Article = true,
-                            NewGoal = ArticleStepRules.RoundGoal,
+                            NewGoal = ArticleStepRules.StepWords(unitCards).Count,
                         });
                     }
                     continue;
@@ -148,7 +147,8 @@ public static class KartyPathBuilder
                 if (d + 1 == articleAfter)
                 {
                     var article = ArticleStep(
-                        articleSteps?.GetValueOrDefault(unit.UnitId),
+                        ArticleStepRules.StepWords(unitCards),
+                        learningById,
                         LegacyPassed(decks.Skip(d + 1), unitCards, learningById),
                         current is null);
                     if (article.State == "current") current = article;
@@ -187,24 +187,27 @@ public static class KartyPathBuilder
     }
 
     /// <summary>
-    /// Ünitenin Artikel adımı: tur bittiyse ya da kullanıcı adımı önceden
-    /// geçmişse <c>done</c>; önceki desteler bittiyse <c>current</c>; yoksa
-    /// <c>upcoming</c>.
+    /// Ünitenin Artikel adımı: adımdan önceki destelerin kelimelerinin
+    /// hepsinin artikeli en az bir kez doğru bilindiyse ya da kullanıcı adımı
+    /// önceden geçmişse <c>done</c>; önceki desteler bittiyse <c>current</c>;
+    /// yoksa <c>upcoming</c>. Halka ve "5/16 artikel" bu kelimeleri sayar.
     /// </summary>
     private static KartyPathStepResponse ArticleStep(
-        PathArticleStep? progress,
+        IReadOnlyList<PathCard> stepWords,
+        IReadOnlyDictionary<int, PathLearning> learningById,
         bool legacyPassed,
         bool reached)
     {
-        var done = progress?.Completed == true || legacyPassed;
+        var answered = stepWords.Count(card =>
+            learningById.TryGetValue(card.KartyId, out var learning) &&
+            ArticleStepRules.IsAnswered(learning.LastArticleAnsweredDate));
+        var done = legacyPassed || (stepWords.Count > 0 && answered >= stepWords.Count);
         return new KartyPathStepResponse
         {
             State = done ? "done" : reached ? "current" : "upcoming",
             Article = true,
-            NewGoal = ArticleStepRules.RoundGoal,
-            LearnedCount = done
-                ? ArticleStepRules.RoundGoal
-                : Math.Min(progress?.CorrectCount ?? 0, ArticleStepRules.RoundGoal),
+            NewGoal = stepWords.Count,
+            LearnedCount = done ? stepWords.Count : answered,
         };
     }
 
@@ -263,13 +266,11 @@ public sealed record PathCard(
     string KartyUrl,
     string? Meaning = null);
 
-/// <summary>Kullanıcının bir ünitedeki Artikel adımı.</summary>
-public sealed record PathArticleStep(int CorrectCount, bool Completed);
-
 public sealed record PathLearning(
     int KartyId,
     int Box,
     DateTime? DueDate,
     DateTime? IntroducedDate,
     DateTime FirstLearnedDate,
-    DateTime? ReinforcedAt = null);
+    DateTime? ReinforcedAt = null,
+    DateTime? LastArticleAnsweredDate = null);
